@@ -1,0 +1,36 @@
+name: Generate application source
+
+on:
+  push:
+    paths:
+      - 'bootstrap/main.js.gz.b64'
+      - '.github/workflows/generate-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore application source
+        run: |
+          mkdir -p src
+          base64 --decode bootstrap/main.js.gz.b64 | gzip --decompress > src/main.js
+          node --check src/main.js
+
+      - name: Commit generated source
+        run: |
+          if git diff --quiet -- src/main.js; then
+            echo "src/main.js is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.js
+          git commit -m "build: restore application source"
+          git push
