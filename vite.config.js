@@ -1,8 +1,5 @@
 import { defineConfig } from 'vite';
 
-const oldDemoDecoder = 'const p=(await v.text()).trim(),m=atob(p),h=new Uint8Array(m.length);for(let L=0;L<m.length;L++)h[L]=m.charCodeAt(L);return new File([h],c,{type:"image/jpeg"})';
-const newDemoDecoder = 'const p=await v.blob();return new File([p],c,{type:p.type||"image/jpeg"})';
-
 const pixelReadMarker = 'const m=v.getContext("2d",{willReadFrequently:!0}).getImageData(0,0,l,c).data,h=p.getContext("2d",{willReadFrequently:!0}).getImageData(0,0,l,c).data,L=S(l,c)';
 const guardedPixelRead = 'const m=v.getContext("2d",{willReadFrequently:!0}).getImageData(0,0,l,c).data,h=p.getContext("2d",{willReadFrequently:!0}).getImageData(0,0,l,c).data;validateMattingPair(m,h,l,c);const L=S(l,c)';
 
@@ -31,32 +28,47 @@ const validationHelper = `function validateMattingPair(whitePixels,blackPixels,w
   }
 }`;
 
-function patchMattingDemo() {
+function cleanHomepageAndMatting() {
   return {
-    name: 'patch-matting-demo',
+    name: 'clean-homepage-and-matting',
     enforce: 'pre',
     transform(code, id) {
       if (!id.replaceAll('\\', '/').endsWith('/src/main.js')) return null;
 
       let patched = code
-        .replaceAll('./demo-white.jpg.b64', './demo-white.jpg?v=3')
-        .replaceAll('./demo-black.jpg.b64', './demo-black.jpg?v=3')
-        .replace('fetch(new URL(l,window.location.href))', 'fetch(new URL(l,window.location.href),{cache:"no-store"})')
-        .replace(oldDemoDecoder, newDemoDecoder)
+        .replace(/\s*<section class="hero">[\s\S]*?<\/section>/, '')
+        .replace(
+          /async function loadDemoFile[\s\S]*?\);const o=e\.querySelector\("\.edge-clean"\)/,
+          'const o=e.querySelector(".edge-clean")'
+        )
         .replace('function ze(e){', `${validationHelper}function ze(e){`)
         .replace(pixelReadMarker, guardedPixelRead);
 
       const failed = [
-        patched.includes('.jpg.b64'),
-        patched.includes(oldDemoDecoder),
+        patched.includes('<section class="hero">'),
+        patched.includes('loadDemoFile'),
+        patched.includes('demo-white'),
+        patched.includes('demo-black'),
         !patched.includes('validateMattingPair(m,h,l,c)')
       ].some(Boolean);
 
       if (failed) {
-        throw new Error('Double-background matting source patch did not apply.');
+        throw new Error('Homepage/demo cleanup patch did not apply.');
       }
 
       return { code: patched, map: null };
+    },
+    generateBundle(_options, bundle) {
+      for (const asset of Object.values(bundle)) {
+        if (asset.type !== 'chunk') continue;
+        asset.code = asset.code.replace(
+          /const\s+[$\w]+=\{white:new URL\("\/demo-white\.jpg"[\s\S]*$/,
+          ''
+        );
+        if (/demo-(white|black)\.jpg/.test(asset.code)) {
+          throw new Error('Default demo image loader still exists in production bundle.');
+        }
+      }
     }
   };
 }
@@ -64,5 +76,5 @@ function patchMattingDemo() {
 export default defineConfig({
   base: './',
   publicDir: 'bootstrap',
-  plugins: [patchMattingDemo()]
+  plugins: [cleanHomepageAndMatting()]
 });
