@@ -1,0 +1,9 @@
+.toast-stack {
+  z-index: 500;
+}
+
+.toast.success {
+  border-color: rgba(54, 211, 153, 0.48);
+  background: rgba(9, 38, 34, 0.97);
+  color: #d8fff0;
+}
